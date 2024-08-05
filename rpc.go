@@ -83,7 +83,7 @@ func (r *RpcApi) call(payload callPayload) ([]byte, error) {
 func (r *RpcApi) SwitchOn(relay int) error {
 	_, err := r.call(callPayload{
 		Method: "GET",
-		Path:   fmt.Sprintf("Switch.Toggle?id=%s&on=true", strconv.Itoa(relay)),
+		Path:   fmt.Sprintf("Switch.Set?id=%s&on=true", strconv.Itoa(relay)),
 	})
 
 	if err != nil {
@@ -95,7 +95,7 @@ func (r *RpcApi) SwitchOn(relay int) error {
 func (r *RpcApi) SwitchOff(relay int) error {
 	_, err := r.call(callPayload{
 		Method: "GET",
-		Path:   fmt.Sprintf("Switch.Toggle?id=%s&on=false", strconv.Itoa(relay)),
+		Path:   fmt.Sprintf("Switch.Set?id=%s&on=false", strconv.Itoa(relay)),
 	})
 
 	if err != nil {
@@ -107,7 +107,7 @@ func (r *RpcApi) SwitchOff(relay int) error {
 func (r *RpcApi) SwitchOnWithTimer(relay, timer int) error {
 	_, err := r.call(callPayload{
 		Method: "GET",
-		Path:   fmt.Sprintf("Switch.Toggle?id=%s&on=true&toggle_after=%s", strconv.Itoa(relay), strconv.Itoa(timer)),
+		Path:   fmt.Sprintf("Switch.Set?id=%s&on=true&toggle_after=%s", strconv.Itoa(relay), strconv.Itoa(timer)),
 	})
 
 	if err != nil {
