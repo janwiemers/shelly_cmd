@@ -201,6 +201,40 @@ func (r *RpcApi) SwitchReset(relay int) (*SwitchResetResponse, error) {
 	return &result, nil
 }
 
+type SwitchConfigResponse struct {
+	ID                int    `json:"id"`
+	Name              string `json:"name"`
+	Mode              string `json:"in_mode"`
+	InitialState      string `json:"initial_state"`
+	AutoOn            bool   `json:"auto_on"`
+	AutoOnDelay       int    `json:"auto_on_delay"`
+	AutoOff           bool   `json:"auto_off"`
+	AutoOffDelay      int    `json:"auto_off_delay"`
+	Autorecover       bool   `json:"autorecover_voltage_errors"`
+	PowerLimit        int    `json:"power_limit"`
+	VoltageLimit      int    `json:"voltage_limit"`
+	UndervoltageLimit int    `json:"undervoltage_limit"`
+	CurrentLimit      int    `json:"current_limit"`
+}
+
+func (r *RpcApi) SwitchConfig(relay int) (*SwitchConfigResponse, error) {
+	res, err := r.call(callPayload{
+		Method: "GET",
+		Path:   fmt.Sprintf("Switch.GetConfig?id=%s", strconv.Itoa(relay)),
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	var result SwitchConfigResponse
+	if err := json.Unmarshal(res, &result); err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
 // GetDeviceInfo retrieves the device information from the shelly.
 // It returns a DeviceInfoResponse struct and an error if any occurred.
 // The error is returned in case of a non 2xx response code.
