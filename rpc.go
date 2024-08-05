@@ -1,4 +1,4 @@
-package main
+package shelly_cmd
 
 import (
 	"encoding/json"
