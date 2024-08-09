@@ -1,17 +1,11 @@
 package shelly_cmd
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"io"
-	"net/http"
-	"strconv"
-)
 
-type callPayload struct {
-	Method string
-	Path   string
-}
+	"github.com/ybbus/jsonrpc/v3"
+)
 
 // HttpApi provides the functionality to communicate with the shelly.
 // It is used by all other functions in this package.
@@ -23,8 +17,7 @@ type callPayload struct {
 // The client is also initialized with a default transport that disables keep-alive connections.
 type RpcApi struct {
 	IP     string
-	online bool
-	client *http.Client
+	client jsonrpc.RPCClient
 }
 
 // NewHttpApi creates a new instance of the HttpApi struct.
@@ -33,102 +26,107 @@ type RpcApi struct {
 // The client is used to make the API calls.
 // The client is initialized with a default timeout of 5 seconds.
 // The client is also initialized with a default transport that disables keep-alive connections.
-func NewRpcApi(ip string) *RpcApi {
+func NewRpcApi(ip string) (*RpcApi, error) {
+	rpcClient := jsonrpc.NewClientWithOpts(fmt.Sprintf("http://%s:%d/rpc", ip, 80), &jsonrpc.RPCClientOpts{
+		AllowUnknownFields: true,
+	})
+
 	return &RpcApi{
 		IP:     ip,
-		online: false,
-		client: &http.Client{},
-	}
+		client: rpcClient,
+	}, nil
 }
 
-// call provides the internal central point of communicating with the shelly.
-// It is used by all other functions in this package.
-// It returns the response body as a byte array and an error if any occurred.
-// The error is returned in case of a non 2xx response code.
-// The caller is responsible for parsing the response body.
-//
-//	func (h *HttpApi) callGet(path string) ([]byte, error) {
-//		return h.call(callPayload{
-//			Method: "GET",
-//			Path:   path,
-//		})
-//	}
-func (r *RpcApi) call(payload callPayload) ([]byte, error) {
-	url := fmt.Sprintf("http://%s/rpc/%s", r.IP, payload.Path)
+type SwitchWasResponse struct {
+	WasOn bool `json:"was_on"`
+}
 
-	req, err := http.NewRequest(payload.Method, url, nil)
+func (r *RpcApi) SwitchOn(relay int) (*SwitchWasResponse, error) {
+	var result SwitchWasResponse
+	err := r.client.CallFor(context.Background(), &result, "Switch.Set", map[string]interface{}{
+		"id": relay,
+		"on": true,
+	})
+
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := r.client.Do(req)
+	return &result, nil
+}
+
+func (r *RpcApi) SwitchOnWithTimer(relay, timer int) (*SwitchWasResponse, error) {
+	var result SwitchWasResponse
+	err := r.client.CallFor(context.Background(), &result, "Switch.Set", map[string]interface{}{
+		"id":           relay,
+		"on":           true,
+		"toggle_after": timer,
+	})
+
 	if err != nil {
 		return nil, err
 	}
 
-	if res.StatusCode != 200 {
-		return nil, fmt.Errorf("unexpected status code: %d", res.StatusCode)
-	}
+	return &result, nil
+}
 
-	defer res.Body.Close()
+func (r *RpcApi) SwitchOff(relay int) (*SwitchWasResponse, error) {
+	var result SwitchWasResponse
+	err := r.client.CallFor(context.Background(), &result, "Switch.Set", map[string]interface{}{
+		"id": relay,
+		"on": false,
+	})
 
-	bytes, err := io.ReadAll(res.Body)
 	if err != nil {
 		return nil, err
 	}
 
-	return bytes, nil
+	return &result, nil
 }
 
-func (r *RpcApi) SwitchOn(relay int) error {
-	_, err := r.call(callPayload{
-		Method: "GET",
-		Path:   fmt.Sprintf("Switch.Set?id=%s&on=true", strconv.Itoa(relay)),
+func (r *RpcApi) SwitchToggle(relay int) (*SwitchWasResponse, error) {
+	var result SwitchWasResponse
+	err := r.client.CallFor(context.Background(), &result, "Switch.Toggle", map[string]interface{}{
+		"id": relay,
 	})
 
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+
+	return &result, nil
 }
 
-func (r *RpcApi) SwitchOff(relay int) error {
-	_, err := r.call(callPayload{
-		Method: "GET",
-		Path:   fmt.Sprintf("Switch.Set?id=%s&on=false", strconv.Itoa(relay)),
+type SwitchGetConfigResponse struct {
+	ID                       int     `json:"id"`
+	Name                     string  `json:"name"`
+	Mode                     string  `json:"mode"`
+	InitialState             string  `json:"initial_state"`
+	AutoOn                   bool    `json:"auto_on"`
+	AutoOnDelay              float32 `json:"auto_on_delay"`
+	AutoOff                  bool    `json:"auto_off"`
+	AutoOffDelay             float32 `json:"auto_off_delay"`
+	AutorecoverVoltageErrors bool    `json:"autorecover_voltage_errors"`
+	PowerLimit               float32 `json:"power_limit"`
+	CurrentLimit             float32 `json:"current_limit"`
+	UndervoltageLimit        float32 `json:"undervoltage_limit"`
+	VoltageLimit             float32 `json:"voltage_limit"`
+}
+
+func (r *RpcApi) SwitchGetConfig(relay int) (*SwitchGetConfigResponse, error) {
+	var result SwitchGetConfigResponse
+	err := r.client.CallFor(context.Background(), &result, "Switch.GetConfig", map[string]interface{}{
+		"id": relay,
 	})
 
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+
+	return &result, nil
 }
 
-func (r *RpcApi) SwitchOnWithTimer(relay, timer int) error {
-	_, err := r.call(callPayload{
-		Method: "GET",
-		Path:   fmt.Sprintf("Switch.Set?id=%s&on=true&toggle_after=%s", strconv.Itoa(relay), strconv.Itoa(timer)),
-	})
-
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-type DeviceInfoResponse struct {
-	Id                    string `json:"id"`
-	Name                  string `json:"name"`
-	Mac                   string `json:"mac"`
-	Model                 string `json:"model"`
-	Version               string `json:"ver"`
-	ForwardVersion        string `json:"fw_id"`
-	AuthenticationEnabled bool   `json:"auth_en"`
-	AuthenticationDomain  string `json:"auth_domain"`
-	Generation            int    `json:"gen"`
-}
-
-type SwitchStatusResponse struct {
+type SwitchGetStatusResponse struct {
 	ID           int     `json:"id"`
 	Source       string  `json:"source"`
 	Output       bool    `json:"output"`
@@ -152,29 +150,24 @@ type SwitchStatusResponse struct {
 	} `json:"temperature"`
 }
 
-// SwitchStatus retrieves the status of a specific relay.
-// It returns a SwitchStatusResponse struct and an error if any occurred.
-// The error is returned in case of a non 2xx response code.
-// The caller is responsible for parsing the response body.
-func (r *RpcApi) SwitchStatus(relay int) (*SwitchStatusResponse, error) {
-	res, err := r.call(callPayload{
-		Method: "GET",
-		Path:   fmt.Sprintf("Switch.GetStatus?id=%s", strconv.Itoa(relay)),
+// // SwitchGetStatus retrieves the status of a specific relay.
+// // It returns a SwitchStatusResponse struct and an error if any occurred.
+// // The error is returned in case of a non 2xx response code.
+// // The caller is responsible for parsing the response body.
+func (r *RpcApi) SwitchGetStatus(relay int) (*SwitchGetStatusResponse, error) {
+	var result SwitchGetStatusResponse
+	err := r.client.CallFor(context.Background(), &result, "Switch.GetStatus", map[string]interface{}{
+		"id": relay,
 	})
 
 	if err != nil {
 		return nil, err
 	}
 
-	var result SwitchStatusResponse
-	if err := json.Unmarshal(res, &result); err != nil {
-		return nil, err
-	}
-
 	return &result, nil
 }
 
-type SwitchResetResponse struct {
+type SwitchResetCountersResponse struct {
 	ActiveEnergy struct {
 		Total float32 `json:"total"`
 	}
@@ -183,74 +176,15 @@ type SwitchResetResponse struct {
 	}
 }
 
-func (r *RpcApi) SwitchReset(relay int) (*SwitchResetResponse, error) {
-	res, err := r.call(callPayload{
-		Method: "GET",
-		Path:   fmt.Sprintf("Switch.ResetCounters?id=%s&type=%s", strconv.Itoa(relay), "['aenergy','ret_aenergy']"),
+func (r *RpcApi) SwitchResetCounters(relay int) (*SwitchResetCountersResponse, error) {
+	var result SwitchResetCountersResponse
+	err := r.client.CallFor(context.Background(), &result, "Switch.ResetCounters", map[string]interface{}{
+		"id": relay,
+		// "type": []string{"aenergy", "ret_aenergy"},
+		"type": "['aenergy', 'ret_aenergy']",
 	})
 
 	if err != nil {
-		return nil, err
-	}
-
-	var result SwitchResetResponse
-	if err := json.Unmarshal(res, &result); err != nil {
-		return nil, err
-	}
-
-	return &result, nil
-}
-
-type SwitchConfigResponse struct {
-	ID                int    `json:"id"`
-	Name              string `json:"name"`
-	Mode              string `json:"in_mode"`
-	InitialState      string `json:"initial_state"`
-	AutoOn            bool   `json:"auto_on"`
-	AutoOnDelay       int    `json:"auto_on_delay"`
-	AutoOff           bool   `json:"auto_off"`
-	AutoOffDelay      int    `json:"auto_off_delay"`
-	Autorecover       bool   `json:"autorecover_voltage_errors"`
-	PowerLimit        int    `json:"power_limit"`
-	VoltageLimit      int    `json:"voltage_limit"`
-	UndervoltageLimit int    `json:"undervoltage_limit"`
-	CurrentLimit      int    `json:"current_limit"`
-}
-
-func (r *RpcApi) SwitchConfig(relay int) (*SwitchConfigResponse, error) {
-	res, err := r.call(callPayload{
-		Method: "GET",
-		Path:   fmt.Sprintf("Switch.GetConfig?id=%s", strconv.Itoa(relay)),
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	var result SwitchConfigResponse
-	if err := json.Unmarshal(res, &result); err != nil {
-		return nil, err
-	}
-
-	return &result, nil
-}
-
-// GetDeviceInfo retrieves the device information from the shelly.
-// It returns a DeviceInfoResponse struct and an error if any occurred.
-// The error is returned in case of a non 2xx response code.
-// The caller is responsible for parsing the response body.
-func (r *RpcApi) GetDeviceInfo() (*DeviceInfoResponse, error) {
-	res, err := r.call(callPayload{
-		Method: "GET",
-		Path:   "Shelly.GetDeviceInfo",
-	})
-
-	if err != nil {
-		return nil, err
-	}
-
-	var result DeviceInfoResponse
-	if err := json.Unmarshal(res, &result); err != nil {
 		return nil, err
 	}
 
